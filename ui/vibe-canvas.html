@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="blue">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vibe Canvas</title>
+    <style>
+      :root,
+      html[data-theme="blue"] {
+        color-scheme: light;
+        --bg: #f4f9ff;
+        --panel: rgba(255, 255, 255, 0.94);
+        --ink: #10204c;
+        --muted: #657596;
+        --line: rgba(47, 125, 246, 0.16);
+        --accent: #2f7df6;
+        --accent-soft: #e5efff;
+        --mint: #d2f4f2;
+        --violet: #e3ebff;
+        --candidate: #a96f12;
+        --candidate-soft: #fff3cf;
+        --ignored-soft: #edf2f8;
+        --turn-bg: rgba(255, 255, 255, 0.68);
+        --control-bg: rgba(255, 255, 255, 0.86);
+        --theme-copy: #425784;
+        --grid-line: rgba(47, 125, 246, 0.07);
+        --edge: rgba(61, 121, 225, 0.42);
+        --root-bg: #ffe2ef;
+        --root-line: rgba(237, 94, 158, 0.46);
+        --theme-line: rgba(68, 112, 232, 0.35);
+        --point-line: rgba(45, 184, 194, 0.38);
+        --orb-a: rgba(47, 125, 246, 0.15);
+        --orb-b: rgba(47, 197, 201, 0.11);
+        --success: #36b9c2;
+        --success-ring: rgba(54, 185, 194, 0.14);
+        --pick-checked: #2f9d69;
+        --pick-unchecked: #9aa3af;
+        --pick-unchecked-soft: #eef1f4;
+        --theme-accent: #6689eb;
+        --point-accent: #35bdc2;
+        --shadow: 0 18px 52px rgba(47, 101, 179, 0.08);
+      }
+
+      html[data-theme="warm"] {
+        --bg: #f3f0e8;
+        --panel: rgba(255, 253, 247, 0.9);
+        --ink: #20201d;
+        --muted: #77736a;
+        --line: rgba(38, 38, 33, 0.12);
+        --accent: #e85f3c;
+        --accent-soft: #fae3dc;
+        --mint: #dcebdd;
+        --violet: #e5dff2;
+        --candidate: #a96f12;
+        --candidate-soft: #fff1c9;
+        --ignored-soft: #ece9e2;
+        --turn-bg: rgba(255, 255, 255, 0.28);
+        --control-bg: rgba(255, 255, 255, 0.58);
+        --theme-copy: #59555f;
+        --grid-line: rgba(52, 51, 47, 0.035);
+        --edge: rgba(61, 60, 55, 0.23);
+        --root-bg: #fae3dc;
+        --root-line: rgba(232, 95, 60, 0.4);
+        --theme-line: rgba(113, 91, 155, 0.27);
+        --point-line: rgba(70, 116, 82, 0.23);
+        --orb-a: rgba(232, 95, 60, 0.11);
+        --orb-b: rgba(88, 128, 99, 0.11);
+        --success: #68a675;
+        --success-ring: rgba(104, 166, 117, 0.12);
+        --pick-checked: #2f9d69;
+        --pick-unchecked: #9aa3af;
+        --pick-unchecked-soft: #eeece7;
+        --theme-accent: #9783bd;
+        --point-accent: #71927a;
+        --shadow: 0 16px 50px rgba(55, 48, 35, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; }
+      body {
+        min-width: 360px;
+        background:
+          radial-gradient(circle at 7% 0%, var(--orb-a), transparent 27%),
+          radial-gradient(circle at 100% 100%, var(--orb-b), transparent 30%),
+          var(--bg);
+        color: var(--ink);
+        font-family: ui-rounded, "SF Pro Rounded", "PingFang SC", system-ui, sans-serif;
+        transition: background-color 180ms ease, color 180ms ease;
+      }
+
+      .shell { min-height: 100vh; padding: 18px; }
+      .topbar {
+        min-height: 54px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 0 4px 14px;
+      }
+      .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+      .brand-mark {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        box-shadow: 0 7px 22px rgba(45, 40, 30, 0.07);
+      }
+      .brand-mark::before {
+        content: "";
+        width: 11px;
+        height: 11px;
+        border-radius: 50% 50% 45% 55%;
+        background: var(--accent);
+        transform: rotate(-18deg);
+      }
+      .eyebrow {
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 760;
+        letter-spacing: 0.17em;
+        text-transform: uppercase;
+      }
+      h1 {
+        max-width: 48vw;
+        margin: 2px 0 0;
+        overflow: hidden;
+        font-size: 16px;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .top-actions { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
+      .theme-switch { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 720; }
+      .theme-toggle-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .theme-name {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 650;
+        transition: color 150ms ease;
+      }
+      html[data-theme="blue"] .theme-name.blue,
+      html[data-theme="warm"] .theme-name.warm { color: var(--ink); font-weight: 780; }
+      .theme-toggle {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        cursor: pointer;
+      }
+      .theme-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+      .theme-track {
+        width: 44px;
+        height: 26px;
+        padding: 3px;
+        border-radius: 999px;
+        background: #2f7df6;
+        box-shadow: inset 0 0 0 1px rgba(16, 32, 76, 0.08), 0 5px 14px rgba(47, 125, 246, 0.18);
+        transition: background 180ms ease, box-shadow 180ms ease;
+      }
+      .theme-thumb {
+        display: block;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 2px 6px rgba(16, 32, 76, 0.24);
+        transition: transform 180ms ease;
+      }
+      .theme-toggle input:checked + .theme-track {
+        background: #e85f3c;
+        box-shadow: inset 0 0 0 1px rgba(74, 35, 22, 0.08), 0 5px 14px rgba(232, 95, 60, 0.18);
+      }
+      .theme-toggle input:checked + .theme-track .theme-thumb { transform: translateX(18px); }
+      .theme-toggle input:focus-visible + .theme-track { outline: 2px solid var(--accent); outline-offset: 3px; }
+      .live-status {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .pulse {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 0 4px var(--success-ring);
+      }
+      .pulse.waiting { background: #b2aa9c; box-shadow: none; }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 13px;
+      }
+      .upper-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 13px;
+      }
+      .panel {
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+      .panel-head {
+        min-height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .panel-head h2 { margin: 0; font-size: 12px; }
+      .panel-meta { color: var(--muted); font-size: 10px; }
+      .panel-body { padding: 15px 16px; }
+      .empty { color: var(--muted); font-size: 12px; line-height: 1.65; }
+
+      .source-panel .panel-body {
+        max-height: 390px;
+        overflow: auto;
+      }
+      .turn-list { display: grid; gap: 10px; }
+      .turn {
+        padding: 11px 12px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--turn-bg);
+        transition: opacity 160ms ease, background 160ms ease;
+      }
+      .turn.candidate {
+        border-color: rgba(169, 111, 18, 0.28);
+        background: var(--candidate-soft);
+      }
+      .turn.ignored { opacity: 0.5; background: transparent; }
+      .turn.manual-picked { box-shadow: inset 3px 0 0 var(--accent); }
+      .turn.manual-ignored { opacity: 0.55; background: transparent; }
+      .turn-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 7px;
+      }
+      .turn-label {
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 720;
+        letter-spacing: 0.08em;
+      }
+      .turn-label-group { display: flex; align-items: center; gap: 7px; min-width: 0; }
+      .selection-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 19px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        color: #5e5a51;
+        background: var(--ignored-soft);
+        font-size: 8px;
+        font-weight: 760;
+        letter-spacing: 0.02em;
+      }
+      .selection-badge.ai-picked { color: #3f714a; background: var(--mint); }
+      .selection-badge.candidate { color: #81520b; background: #ffe4a1; }
+      .selection-badge.manual-picked { color: #a43e28; background: var(--accent-soft); }
+      .selection-badge.manual-ignored { color: #68645c; background: var(--ignored-soft); }
+      .candidate-buffer-note {
+        margin-bottom: 10px;
+        padding: 8px 10px;
+        border: 1px dashed rgba(169, 111, 18, 0.3);
+        border-radius: 10px;
+        color: #765520;
+        background: rgba(255, 241, 201, 0.55);
+        font-size: 9px;
+        line-height: 1.5;
+      }
+      .pick-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 4px 3px;
+        border: 0;
+        border-radius: 8px;
+        color: var(--muted);
+        background: transparent;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        user-select: none;
+        transition: color 150ms ease, opacity 150ms ease;
+      }
+      .pick-toggle:hover { color: var(--ink); }
+      .pick-toggle:has(input:checked) { color: var(--pick-checked); }
+      .pick-toggle input {
+        appearance: none;
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        display: grid;
+        place-content: center;
+        border: 2px solid var(--pick-unchecked);
+        border-radius: 50%;
+        background: var(--pick-unchecked-soft);
+        cursor: pointer;
+        transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+      }
+      .pick-toggle input::before {
+        content: "";
+        width: 5px;
+        height: 9px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: translateY(-1px) rotate(45deg) scale(0);
+        transition: transform 120ms ease;
+      }
+      .pick-toggle input:checked {
+        border-color: var(--pick-checked);
+        background: var(--pick-checked);
+      }
+      .pick-toggle input:checked::before { transform: translateY(-1px) rotate(45deg) scale(1); }
+      .pick-toggle input:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(47, 157, 105, 0.18); }
+      .user-text {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .summary {
+        margin: 0 0 13px;
+        padding: 11px 12px;
+        border-radius: 11px;
+        background: var(--mint);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+      .theme-list { display: grid; gap: 9px; }
+      .theme {
+        padding: 10px 11px;
+        border-radius: 11px;
+        background: var(--violet);
+      }
+      .theme strong { display: block; margin-bottom: 5px; font-size: 11px; }
+      .theme ul { margin: 0; padding-left: 16px; color: var(--theme-copy); font-size: 10px; line-height: 1.65; }
+
+      .graph-panel { min-height: 460px; }
+      .legend { display: flex; gap: 10px; color: var(--muted); font-size: 9px; }
+      .legend span { display: flex; align-items: center; gap: 4px; }
+      .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+      .dot.theme-dot { background: var(--theme-accent); }
+      .dot.point-dot { background: var(--point-accent); }
+      .map-viewport {
+        position: relative;
+        min-height: 410px;
+        overflow: auto;
+        background-image:
+          linear-gradient(var(--grid-line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+      .map-canvas { position: relative; min-width: 730px; min-height: 410px; }
+      .edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+      .edge { fill: none; stroke: var(--edge); stroke-width: 1.25; }
+      .graph-node {
+        position: absolute;
+        min-height: 40px;
+        display: flex;
+        align-items: center;
+        padding: 8px 11px;
+        border: 1px solid rgba(45, 44, 39, 0.13);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 7px 22px rgba(47, 43, 33, 0.075);
+        font-size: 10px;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+      }
+      .graph-node.root {
+        width: 142px;
+        border-color: var(--root-line);
+        background: var(--root-bg);
+        font-weight: 740;
+      }
+      .graph-node.theme {
+        width: 136px;
+        border-color: var(--theme-line);
+        background: var(--violet);
+        font-weight: 680;
+      }
+      .graph-node.point {
+        width: 164px;
+        border-color: var(--point-line);
+        background: var(--mint);
+      }
+      .graph-node.thought { width: 174px; border-style: dashed; color: #5e5b53; }
+      .updated { animation: breathe 520ms ease-out; }
+      @keyframes breathe {
+        0% { box-shadow: inset 0 0 0 2px var(--accent-soft); }
+        100% { box-shadow: inset 0 0 0 2px transparent; }
+      }
+
+      @media (min-width: 1050px) {
+        .upper-grid { grid-template-columns: minmax(0, 1fr) minmax(310px, 0.72fr); }
+        .source-panel .panel-body { height: 320px; }
+      }
+
+      @media (max-width: 680px) {
+        .topbar { align-items: flex-start; flex-wrap: wrap; }
+        .top-actions { width: 100%; justify-content: space-between; }
+        h1 { max-width: 76vw; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <div class="eyebrow">Vibe Canvas · Live Projection</div>
+            <h1 id="canvas-title">等待 Codex 对话</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <div class="theme-switch">
+            <span>主题</span>
+            <div class="theme-toggle-wrap">
+              <span class="theme-name blue">蓝色</span>
+              <label class="theme-toggle">
+                <input id="theme-toggle-input" type="checkbox" role="switch" aria-label="在蓝色与暖色主题间切换" />
+                <span class="theme-track" aria-hidden="true"><span class="theme-thumb"></span></span>
+              </label>
+              <span class="theme-name warm">暖色</span>
+            </div>
+          </div>
+          <div class="live-status">
+            <span class="pulse waiting" id="pulse"></span>
+            <span id="status">等待连接</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="dashboard">
+        <div class="upper-grid">
+          <section class="panel source-panel" data-region="source">
+            <header class="panel-head">
+              <h2>对话原文</h2>
+              <span class="panel-meta" id="turn-count">0 轮</span>
+            </header>
+            <div class="panel-body" id="source-content">
+              <div class="empty">继续在左侧和 Codex 对话，这里只保留你实际发送的原文。</div>
+            </div>
+          </section>
+
+          <section class="panel" data-region="structured">
+            <header class="panel-head">
+              <h2>结构化理解</h2>
+              <span class="panel-meta" id="theme-count">等待首轮</span>
+            </header>
+            <div class="panel-body" id="structured-content">
+              <div class="empty">主题、关系和当前核心结论会随对话自动演化。</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel graph-panel" data-region="graph">
+          <header class="panel-head">
+            <h2>动态思维导图</h2>
+            <div class="legend" aria-label="图例">
+              <span><i class="dot"></i>中心</span>
+              <span><i class="dot theme-dot"></i>主题</span>
+              <span><i class="dot point-dot"></i>要点</span>
+            </div>
+          </header>
+          <div class="map-viewport">
+            <div class="map-canvas" id="map-canvas">
+              <svg class="edges" id="edges" aria-hidden="true"></svg>
+              <div id="nodes"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const elements = {
+        title: document.getElementById("canvas-title"),
+        status: document.getElementById("status"),
+        pulse: document.getElementById("pulse"),
+        turnCount: document.getElementById("turn-count"),
+        source: document.getElementById("source-content"),
+        themeCount: document.getElementById("theme-count"),
+        structured: document.getElementById("structured-content"),
+        canvas: document.getElementById("map-canvas"),
+        nodes: document.getElementById("nodes"),
+        edges: document.getElementById("edges"),
+        themeToggle: document.getElementById("theme-toggle-input"),
+      };
+      const themeStorageKey = "vibe-canvas-theme";
+      const sessionId = new URLSearchParams(window.location.search).get("session");
+      let state = window.openai?.toolOutput ?? null;
+      let lastRevision = -1;
+      let refreshing = false;
+
+      function make(tag, className, text) {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text !== undefined) element.textContent = text;
+        return element;
+      }
+
+      function setTheme(theme, persist = true) {
+        const nextTheme = theme === "warm" ? "warm" : "blue";
+        document.documentElement.dataset.theme = nextTheme;
+        elements.themeToggle.checked = nextTheme === "warm";
+        if (persist) {
+          try {
+            window.localStorage.setItem(themeStorageKey, nextTheme);
+          } catch {}
+        }
+      }
+
+      function restoreTheme() {
+        let savedTheme = "blue";
+        try {
+          savedTheme = window.localStorage.getItem(themeStorageKey) || "blue";
+        } catch {}
+        setTheme(savedTheme, false);
+      }
+
+      async function persistTheme(theme) {
+        if (!sessionId) return;
+        try {
+          const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/theme`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ theme }),
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          render(await response.json());
+        } catch {
+          elements.status.textContent = "主题保存失败";
+          elements.pulse.classList.add("waiting");
+        }
+      }
+
+      restoreTheme();
+      elements.themeToggle.addEventListener("change", () => {
+        const nextTheme = elements.themeToggle.checked ? "warm" : "blue";
+        setTheme(nextTheme);
+        persistTheme(nextTheme);
+      });
+
+      function normalizedTurns(nextState) {
+        if (Array.isArray(nextState.turns) && nextState.turns.length) return nextState.turns;
+        return (nextState.blocks ?? []).map((block) => ({
+          id: block.id,
+          userText: block.text,
+          picked: true,
+          createdAt: block.createdAt,
+        }));
+      }
+
+      function selectionMeta(turn) {
+        if (turn.manualPick === true) return { label: "人工已选", className: "manual-picked" };
+        if (turn.manualPick === false) return { label: "人工排除", className: "manual-ignored" };
+        if (turn.aiPick === "candidate") return { label: "候选缓冲", className: "candidate" };
+        if (turn.aiPick === "ignored" || turn.picked === false) {
+          return { label: "AI 略过", className: "ignored" };
+        }
+        return { label: "AI 已选", className: "ai-picked" };
+      }
+
+      async function updatePick(turn, picked, input) {
+        if (!sessionId) {
+          input.checked = !picked;
+          return;
+        }
+        input.disabled = true;
+        try {
+          const response = await fetch(
+            `/api/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turn.id)}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ picked }),
+            },
+          );
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          render(await response.json());
+        } catch {
+          input.checked = !picked;
+          elements.status.textContent = "Pick 更新失败";
+          elements.pulse.classList.add("waiting");
+        } finally {
+          input.disabled = false;
+        }
+      }
+
+      function renderSource() {
+        const turns = normalizedTurns(state);
+        const pickedCount = turns.filter((turn) => turn.picked !== false).length;
+        const candidateCount = Array.isArray(state.candidates)
+          ? state.candidates.length
+          : turns.filter((turn) => turn.aiPick === "candidate" && turn.manualPick == null).length;
+        elements.turnCount.textContent = `${pickedCount}/${turns.length} 入板 · ${candidateCount} 候选`;
+        if (turns.length === 0) {
+          elements.source.innerHTML = '<div class="empty">继续在左侧和 Codex 对话，这里只保留你实际发送的原文。</div>';
+          return;
+        }
+        const list = make("div", "turn-list");
+        if (candidateCount > 0) {
+          list.append(
+            make(
+              "div",
+              "candidate-buffer-note",
+              `${candidateCount} 条候选等待后续语境复判；你也可以直接手动 Pick。`,
+            ),
+          );
+        }
+        turns.forEach((turn, index) => {
+          const selection = selectionMeta(turn);
+          const item = make("article", "turn");
+          item.classList.toggle("unpicked", turn.picked === false);
+          item.classList.add(selection.className);
+          const head = make("div", "turn-head");
+          const labelGroup = make("div", "turn-label-group");
+          labelGroup.append(
+            make("div", "turn-label", `第 ${index + 1} 轮`),
+            make("span", `selection-badge ${selection.className}`, selection.label),
+          );
+          head.append(labelGroup);
+          const toggle = make("label", "pick-toggle");
+          toggle.setAttribute("data-pick-control", "round-checkbox");
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = turn.picked !== false;
+          input.setAttribute("aria-label", `Pick 第 ${index + 1} 轮原文`);
+          input.addEventListener("change", () => updatePick(turn, input.checked, input));
+          toggle.append(input, make("span", "", "Pick"));
+          head.append(toggle);
+          item.append(head, make("p", "user-text", turn.userText));
+          list.append(item);
+        });
+        elements.source.replaceChildren(list);
+        elements.source.scrollTop = elements.source.scrollHeight;
+      }
+
+      function renderStructured() {
+        elements.themeCount.textContent = state.themes.length ? `${state.themes.length} 个主题` : "等待首轮";
+        if (!state.summary && state.themes.length === 0) {
+          elements.structured.innerHTML = '<div class="empty">主题、关系和当前核心结论会随对话自动演化。</div>';
+          return;
+        }
+        const fragment = document.createDocumentFragment();
+        if (state.summary) fragment.append(make("p", "summary", state.summary));
+        const list = make("div", "theme-list");
+        for (const theme of state.themes) {
+          const card = make("article", "theme");
+          card.append(make("strong", "", theme.title));
+          const points = make("ul");
+          for (const point of theme.points) points.append(make("li", "", point.text));
+          card.append(points);
+          list.append(card);
+        }
+        fragment.append(list);
+        elements.structured.replaceChildren(fragment);
+      }
+
+      function graphLayout(nodes) {
+        const root = nodes.find((node) => node.kind === "root");
+        const branches = nodes.filter((node) => node.parentId === root?.id);
+        const heights = branches.map((branch) => {
+          const children = nodes.filter((node) => node.parentId === branch.id);
+          return Math.max(66, children.length * 54 + 14);
+        });
+        const totalHeight = Math.max(410, heights.reduce((sum, value) => sum + value, 0) + 64);
+        const positions = new Map();
+        if (root) positions.set(root.id, { x: 34, y: totalHeight / 2 - 20, width: 142, height: 40 });
+        let cursor = 32;
+        branches.forEach((branch, index) => {
+          const branchHeight = heights[index];
+          const children = nodes.filter((node) => node.parentId === branch.id);
+          const width = branch.kind === "thought" ? 174 : 136;
+          positions.set(branch.id, { x: 226, y: cursor + branchHeight / 2 - 20, width, height: 40 });
+          children.forEach((child, childIndex) => {
+            const step = branchHeight / Math.max(1, children.length);
+            positions.set(child.id, { x: 482, y: cursor + step * (childIndex + 0.5) - 20, width: 164, height: 40 });
+          });
+          cursor += branchHeight;
+        });
+        return { positions, height: totalHeight, width: 690 };
+      }
+
+      function renderGraph() {
+        const nodes = state.graph?.nodes ?? [];
+        const layout = graphLayout(nodes);
+        elements.canvas.style.width = `${layout.width}px`;
+        elements.canvas.style.height = `${layout.height}px`;
+        elements.nodes.replaceChildren();
+        elements.edges.replaceChildren();
+        elements.edges.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
+        for (const node of nodes) {
+          const position = layout.positions.get(node.id);
+          if (!position) continue;
+          const card = make("div", `graph-node ${node.kind}`, node.label);
+          card.style.left = `${position.x}px`;
+          card.style.top = `${position.y}px`;
+          elements.nodes.append(card);
+          if (!node.parentId) continue;
+          const parent = layout.positions.get(node.parentId);
+          if (!parent) continue;
+          const x1 = parent.x + parent.width;
+          const y1 = parent.y + parent.height / 2;
+          const x2 = position.x;
+          const y2 = position.y + position.height / 2;
+          const bend = Math.max(30, (x2 - x1) * 0.45);
+          const edge = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          edge.setAttribute("class", "edge");
+          edge.setAttribute("d", `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`);
+          elements.edges.append(edge);
+        }
+      }
+
+      function render(nextState) {
+        if (!nextState?.id || !Array.isArray(nextState.themes)) return;
+        const changed = nextState.revision !== lastRevision;
+        state = nextState;
+        lastRevision = state.revision;
+        if (state.theme) setTheme(state.theme, false);
+        elements.title.textContent = state.title;
+        elements.status.textContent = "实时同步";
+        elements.pulse.classList.remove("waiting");
+        renderSource();
+        renderStructured();
+        renderGraph();
+        if (changed) {
+          document.querySelector(".dashboard").classList.remove("updated");
+          requestAnimationFrame(() => document.querySelector(".dashboard").classList.add("updated"));
+        }
+      }
+
+      async function refresh() {
+        if (!sessionId || refreshing) return;
+        refreshing = true;
+        try {
+          const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const nextState = await response.json();
+          if (nextState.revision !== lastRevision) render(nextState);
+        } catch {
+          elements.status.textContent = "等待本地同步";
+          elements.pulse.classList.add("waiting");
+        } finally {
+          refreshing = false;
+        }
+      }
+
+      if (state) render(state);
+      if (sessionId) {
+        refresh();
+        window.setInterval(refresh, 900);
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) refresh();
+        });
+      } else if (!state) {
+        elements.status.textContent = "请从 Codex 打开";
+      }
+    </script>
+  </body>
+</html>

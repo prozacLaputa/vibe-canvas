@@ -1,0 +1,13 @@
+interface:
+  display_name: "Vibe Canvas"
+  short_description: "在 Codex 右侧保留原文，并自由 Pick 进入结构与脑图的内容"
+  default_prompt: "Use $vibe-canvas to open a live projection with exact source turns and Pick controls beside this Codex conversation."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "vibe-canvas"
+      description: "Local Vibe Canvas storage and MCP App UI"
+
+policy:
+  allow_implicit_invocation: false

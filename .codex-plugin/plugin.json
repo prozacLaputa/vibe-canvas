@@ -1,0 +1,27 @@
+{
+  "name": "vibe-canvas",
+  "version": "0.7.0",
+  "description": "A live right-side projection of the current Codex conversation, with source turns, structured understanding, and a dynamic mind map.",
+  "author": {
+    "name": "prozacLaputa"
+  },
+  "license": "MIT",
+  "keywords": ["thinking", "mind-map", "canvas", "local-first"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Vibe Canvas",
+    "shortDescription": "Project each Codex turn into a live right-side mind map.",
+    "longDescription": "A local-first conversation projection for Codex: keep chatting normally on the left while AI auto-picks useful turns, buffers uncertain candidates, preserves manual Pick authority through clear green/gray round checkboxes, and offers a persistent labeled blue/warm theme switch.",
+    "developerName": "prozacLaputa",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "MCP", "Local Files"],
+    "defaultPrompt": [
+      "打开 Vibe Canvas。",
+      "在右侧打开 Vibe Canvas 实时投影。",
+      "继续对话并自动更新我的思考画板。"
+    ],
+    "brandColor": "#2F7DF6",
+    "screenshots": []
+  }
+}

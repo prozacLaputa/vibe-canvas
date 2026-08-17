@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "vibe-canvas": {
+      "command": "node",
+      "args": ["./src/mcp-server.js"],
+      "cwd": "."
+    }
+  }
+}
