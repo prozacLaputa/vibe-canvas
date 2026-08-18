@@ -1,6 +1,6 @@
 # Vibe Canvas
 
-![Version](https://img.shields.io/badge/version-0.7.0-2f7df6)
+![Version](https://img.shields.io/badge/version-0.9.0-2f7df6)
 ![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A520-339933?logo=node.js&logoColor=white)
 ![Codex Plugin](https://img.shields.io/badge/Codex-Plugin-111827)
 ![License](https://img.shields.io/badge/license-MIT-22a06b)
@@ -13,11 +13,12 @@
 
 ## 简介
 
-Vibe Canvas 是一个本地优先的 Codex 插件。你继续在左侧正常和 Codex 对话，右侧 Browser 会自动展示三层内容：
+Vibe Canvas 是一个本地优先的 Codex 插件。你继续在左侧正常和 Codex 对话，右侧 Browser 会自动展示结构化内容，并让每个三级结论按需展开第四级原文证据：
 
 - 逐字保留的对话原文
 - AI 归纳后的结构化理解
 - 随对话持续生长的思维导图
+- 默认折叠、点击可看的逐字原文证据
 
 它不是一个需要再次输入、再次发送或手动保存的独立网站。HTML 页面只是 Codex 右侧的实时投影视图；输入、理解和推理仍然发生在当前 Codex 任务中。
 
@@ -34,6 +35,11 @@ Vibe Canvas 是一个本地优先的 Codex 插件。你继续在左侧正常和 
 - **本地优先**：会话和主题偏好保存在当前 workspace 的 `.local/` 目录。
 - **双主题**：亮蓝色默认主题与暖色主题可以即时切换并记住偏好。
 - **增量同步**：每轮只读取紧凑投影并写入当前增量，避免反复回放全部对话。
+- **跨轮聚合**：相同问题复用稳定 Topic，相同命题合并为一个 Claim 并累积多轮证据，不再把每句话简单追加成新节点。
+- **交叉话题**：一个观点只保存一次，通过 primary / related Topic 和类型化关系连接，避免在多个分支重复出现。
+- **保留真实冲突**：相反观点不会被当成重复删除，而是分别保留并标记为 `contradicts`。
+- **有界投影**：默认最多展示 25 个节点，并保留 40 个最近活跃 Claim 用于下一轮匹配；摘要和证据索引也保持固定上限。
+- **四级原文证据**：三级 Claim 显示 `原文 N`，点击或按 Enter / 空格展开逐字片段；原文必须能在对应用户输入中精确匹配，不能由 AI 编造。
 
 ## 截图
 
@@ -83,6 +89,7 @@ codex plugin list --json
 3. AI 自动选择明确有价值的内容，并把不确定内容放入候选缓冲。
 4. 你可以在原文区点击 Pick，随时决定某轮是否进入结构与脑图。
 5. 右上角 Switch 可切换蓝色与暖色主题。
+6. 点击脑图中的三级要点，可展开或收起第四级逐字原文。
 
 画板激活范围只限当前 Codex 任务；普通任务不会被自动接管。
 
@@ -92,19 +99,23 @@ codex plugin list --json
 flowchart LR
     U[左侧正常对话] --> C[当前 Codex 任务]
     C -->|读取紧凑投影| M[本地 MCP Server]
-    C -->|写入本轮原文与结构增量| M
+    C -->|写入原文与类型化概念操作| M
     M --> J[本地 Session JSON]
+    M --> R[Concept Graph Reducer]
+    R --> J
     J -->|revision 变化| B[右侧 Browser 投影]
     B -->|Pick / 主题 PATCH| J
 ```
 
 核心由三部分组成：
 
-1. **Skill 负责时机与约束**：显式打开后，每轮通过 `vibe_canvas_get_projection` 读取紧凑上下文，再用 `vibe_canvas_sync_turn` 写入当前增量。不会启动第二个 Codex 会话，也不会伪造用户消息。
-2. **MCP Server 负责状态**：Node.js 进程同时提供 MCP 工具和仅监听 `127.0.0.1` 的本地 HTTP API，并把 session 持久化为 JSON。
-3. **Browser 负责投影与筛选**：页面约每 900 ms 检查内部 revision，只在状态变化时重绘。Pick 和主题切换直接走本地 HTTP，不调用模型、不消耗额外 Token。
+1. **Skill 负责时机与语义判断**：显式打开后，每轮通过 `vibe_canvas_get_projection` 读取 canonical Topic 和近期 Claim，再判断当前表达应该复用、合并、连接还是拆分。不会启动第二个 Codex 会话，也不会伪造用户消息。
+2. **MCP Server 负责确定性状态**：Node.js 进程提供 MCP 工具和仅监听 `127.0.0.1` 的本地 HTTP API。Reducer 负责稳定 ID、规范化精确去重、Pick 溯源、跨主题关系、有界投影，以及校验每条 `sourceQuote` 确实来自本轮用户原文，并把完整 session 持久化为 JSON。
+3. **Browser 负责投影与筛选**：页面约每 900 ms 检查内部 revision，只在状态变化时重绘。Pick、主题切换和原文展开直接在本地完成，不调用模型、不消耗额外 Token。
 
-Token 主要来自每轮一次紧凑结构读取和一次小型增量写入；浏览器轮询、主题切换和人工 Pick 都是纯本地操作。
+语义同义改写由当前 Codex 判断；服务端只对规范化后完全相同的问题或观点提供确定性兜底，因此不会虚假承诺任意改写都能 100% 自动合并。聚合范围是同一个 Canvas session，不会跨不同 Codex 任务自动合并。
+
+Token 主要来自每轮一次紧凑结构读取和一次小型增量写入。画面限制为 25 个节点、匹配索引限制为 40 个近期 Claim；Codex 的紧凑投影只返回证据数量与最近 3 个来源 ID，不重复携带原文。逐字证据只发给本地 Browser，默认展示最近 5 条，完整溯源留在本地 JSON。浏览器轮询、主题切换、人工 Pick 和原文展开都是纯本地操作。
 
 默认数据位置：
 
@@ -115,7 +126,7 @@ Token 主要来自每轮一次紧凑结构读取和一次小型增量写入；�
 
 ## 快捷键
 
-当前没有额外快捷键；使用 Codex 对话和画板中的 Pick / 主题控件即可。
+聚焦带 `原文 N` 的三级要点后，按 Enter 或空格可以展开 / 收起第四级原文。其他操作使用 Codex 对话和画板中的 Pick / 主题控件即可。
 
 ## 开发
 
@@ -123,7 +134,7 @@ Token 主要来自每轮一次紧凑结构读取和一次小型增量写入；�
 npm test
 ```
 
-测试通过公开 MCP JSON-RPC 和本地 HTTP 投影 API 覆盖打开画板、增量同步、AI Pick、候选复判、人工覆盖、主题偏好和状态恢复。
+33 项行为测试与浏览器视觉测试覆盖打开画板、增量同步、AI Pick、候选复判、人工覆盖、主题偏好、状态恢复、跨轮去重、交叉关系、逐字证据校验、默认折叠、鼠标和键盘展开、12 轮聚合回放和 100 轮证据边界。
 
 ## 更新日志
 

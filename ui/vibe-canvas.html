@@ -204,7 +204,17 @@
       .upper-grid {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
         gap: 13px;
+      }
+      .upper-grid > .panel {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .upper-grid > .panel .panel-body {
+        flex: 1 1 auto;
+        min-height: 0;
       }
       .panel {
         min-width: 0;
@@ -230,7 +240,6 @@
       .empty { color: var(--muted); font-size: 12px; line-height: 1.65; }
 
       .source-panel .panel-body {
-        max-height: 390px;
         overflow: auto;
       }
       .turn-list { display: grid; gap: 10px; }
@@ -365,6 +374,7 @@
       .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
       .dot.theme-dot { background: var(--theme-accent); }
       .dot.point-dot { background: var(--point-accent); }
+      .dot.evidence-dot { background: #7d8a97; }
       .map-viewport {
         position: relative;
         min-height: 410px;
@@ -390,6 +400,9 @@
         font-size: 10px;
         line-height: 1.4;
         overflow-wrap: anywhere;
+        color: inherit;
+        text-align: left;
+        font-family: inherit;
       }
       .graph-node.root {
         width: 142px;
@@ -408,6 +421,34 @@
         border-color: var(--point-line);
         background: var(--mint);
       }
+      button.graph-node.point { cursor: pointer; }
+      button.graph-node.point:hover,
+      button.graph-node.point:focus-visible {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft), 0 7px 22px rgba(47, 43, 33, 0.075);
+        outline: none;
+      }
+      .claim-label { flex: 1; }
+      .evidence-count {
+        flex: 0 0 auto;
+        margin-left: 7px;
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--muted);
+        font-size: 8px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .graph-node.evidence {
+        width: 260px;
+        min-height: 58px;
+        border-style: dashed;
+        border-color: rgba(100, 116, 139, 0.38);
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--theme-copy);
+        font-size: 9px;
+      }
       .graph-node.thought { width: 174px; border-style: dashed; color: #5e5b53; }
       .updated { animation: breathe 520ms ease-out; }
       @keyframes breathe {
@@ -417,7 +458,6 @@
 
       @media (min-width: 1050px) {
         .upper-grid { grid-template-columns: minmax(0, 1fr) minmax(310px, 0.72fr); }
-        .source-panel .panel-body { height: 320px; }
       }
 
       @media (max-width: 680px) {
@@ -486,6 +526,7 @@
               <span><i class="dot"></i>中心</span>
               <span><i class="dot theme-dot"></i>主题</span>
               <span><i class="dot point-dot"></i>要点</span>
+              <span><i class="dot evidence-dot"></i>原文</span>
             </div>
           </header>
           <div class="map-viewport">
@@ -517,6 +558,7 @@
       let state = window.openai?.toolOutput ?? null;
       let lastRevision = -1;
       let refreshing = false;
+      const expandedClaimIds = new Set();
 
       function make(tag, className, text) {
         const element = document.createElement(tag);
@@ -688,7 +730,11 @@
         const branches = nodes.filter((node) => node.parentId === root?.id);
         const heights = branches.map((branch) => {
           const children = nodes.filter((node) => node.parentId === branch.id);
-          return Math.max(66, children.length * 54 + 14);
+          const childHeights = children.map((child) => {
+            const evidenceCount = nodes.filter((node) => node.parentId === child.id).length;
+            return Math.max(62, evidenceCount * 72);
+          });
+          return Math.max(74, childHeights.reduce((sum, value) => sum + value, 0) + 14);
         });
         const totalHeight = Math.max(410, heights.reduce((sum, value) => sum + value, 0) + 64);
         const positions = new Map();
@@ -699,17 +745,80 @@
           const children = nodes.filter((node) => node.parentId === branch.id);
           const width = branch.kind === "thought" ? 174 : 136;
           positions.set(branch.id, { x: 226, y: cursor + branchHeight / 2 - 20, width, height: 40 });
-          children.forEach((child, childIndex) => {
-            const step = branchHeight / Math.max(1, children.length);
-            positions.set(child.id, { x: 482, y: cursor + step * (childIndex + 0.5) - 20, width: 164, height: 40 });
+          let childCursor = cursor + 7;
+          children.forEach((child) => {
+            const evidence = nodes.filter((node) => node.parentId === child.id);
+            const groupHeight = Math.max(62, evidence.length * 72);
+            positions.set(child.id, {
+              x: 482,
+              y: childCursor + groupHeight / 2 - 20,
+              width: 164,
+              height: 40,
+            });
+            const evidenceStep = groupHeight / Math.max(1, evidence.length);
+            evidence.forEach((item, evidenceIndex) => {
+              positions.set(item.id, {
+                x: 704,
+                y: childCursor + evidenceStep * (evidenceIndex + 0.5) - 29,
+                width: 260,
+                height: 58,
+              });
+            });
+            childCursor += groupHeight;
           });
           cursor += branchHeight;
         });
-        return { positions, height: totalHeight, width: 690 };
+        return {
+          positions,
+          height: totalHeight,
+          width: nodes.some((node) => node.kind === "evidence") ? 1000 : 690,
+        };
+      }
+
+      function visibleGraphNodes() {
+        const baseNodes = state.graph?.nodes ?? [];
+        const expandableIds = new Set(
+          baseNodes
+            .filter((node) => node.kind === "point" && node.evidenceQuotes?.length)
+            .map((node) => node.claimId),
+        );
+        for (const claimId of expandedClaimIds) {
+          if (!expandableIds.has(claimId)) expandedClaimIds.delete(claimId);
+        }
+        return baseNodes.flatMap((node) => {
+          if (
+            node.kind !== "point" ||
+            !node.claimId ||
+            !expandedClaimIds.has(node.claimId)
+          ) {
+            return [node];
+          }
+          const evidenceNodes = (node.evidenceQuotes ?? []).map((evidence, index) => ({
+            id: `evidence:${node.claimId}:${evidence.turnId}:${index}`,
+            kind: "evidence",
+            label: `“${evidence.text}”`,
+            parentId: node.id,
+          }));
+          if (node.hiddenEvidenceQuoteCount > 0) {
+            evidenceNodes.push({
+              id: `evidence:${node.claimId}:hidden`,
+              kind: "evidence",
+              label: `另有 ${node.hiddenEvidenceQuoteCount} 条原文，可在左侧对话原文中查看`,
+              parentId: node.id,
+            });
+          }
+          return [node, ...evidenceNodes];
+        });
+      }
+
+      function toggleClaimEvidence(claimId) {
+        if (expandedClaimIds.has(claimId)) expandedClaimIds.delete(claimId);
+        else expandedClaimIds.add(claimId);
+        renderGraph();
       }
 
       function renderGraph() {
-        const nodes = state.graph?.nodes ?? [];
+        const nodes = visibleGraphNodes();
         const layout = graphLayout(nodes);
         elements.canvas.style.width = `${layout.width}px`;
         elements.canvas.style.height = `${layout.height}px`;
@@ -719,7 +828,26 @@
         for (const node of nodes) {
           const position = layout.positions.get(node.id);
           if (!position) continue;
-          const card = make("div", `graph-node ${node.kind}`, node.label);
+          const expandable =
+            node.kind === "point" && node.claimId && (node.evidenceQuotes?.length ?? 0) > 0;
+          const card = make(expandable ? "button" : "div", `graph-node ${node.kind}`);
+          if (expandable) {
+            card.type = "button";
+            card.dataset.claimId = node.claimId;
+            card.setAttribute("aria-expanded", String(expandedClaimIds.has(node.claimId)));
+            card.setAttribute("aria-label", `${node.label}，${node.evidenceCount} 条原文证据`);
+            card.append(
+              make("span", "claim-label", node.label),
+              make(
+                "span",
+                "evidence-count",
+                `原文 ${node.evidenceCount}${expandedClaimIds.has(node.claimId) ? " ▴" : " ▾"}`,
+              ),
+            );
+            card.addEventListener("click", () => toggleClaimEvidence(node.claimId));
+          } else {
+            card.textContent = node.label;
+          }
           card.style.left = `${position.x}px`;
           card.style.top = `${position.y}px`;
           elements.nodes.append(card);

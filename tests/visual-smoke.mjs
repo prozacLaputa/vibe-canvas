@@ -78,7 +78,16 @@ const sampleState = {
     nodes: [
       { id: rootId, kind: "root", label: "对话即画板", parentId: null },
       { id: "theme:t1", kind: "theme", label: "左侧 Codex", parentId: rootId },
-      { id: "point:p1", kind: "point", label: "唯一输入入口", parentId: "theme:t1" },
+      {
+        id: "point:p1",
+        claimId: "p1",
+        kind: "point",
+        label: "唯一输入入口",
+        parentId: "theme:t1",
+        evidenceCount: 1,
+        evidenceQuotes: [{ turnId: "turn-1", text: "我只想在左边正常和 Codex 对话" }],
+        hiddenEvidenceQuoteCount: 0,
+      },
       { id: "point:p2", kind: "point", label: "保持正常对话", parentId: "theme:t1" },
       { id: "theme:t3", kind: "theme", label: "同轮同步", parentId: rootId },
       { id: "point:p5", kind: "point", label: "每轮自动更新", parentId: "theme:t3" },
@@ -121,6 +130,17 @@ try {
   );
   assert.doesNotMatch(await page.locator('[data-region="source"]').innerText(), /Codex 提炼/);
   assert.equal(await page.locator('.graph-node.theme').count(), 2);
+  const expandableClaim = page.locator('[data-claim-id="p1"]');
+  assert.equal(await expandableClaim.getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('.graph-node.evidence').count(), 0);
+  await expandableClaim.click();
+  assert.equal(await expandableClaim.getAttribute('aria-expanded'), 'true');
+  assert.equal(await page.locator('.graph-node.evidence').count(), 1);
+  assert.match(await page.locator('.graph-node.evidence').innerText(), /我只想在左边正常和 Codex 对话/);
+  await expandableClaim.press('Enter');
+  assert.equal(await page.locator('.graph-node.evidence').count(), 0);
+  await expandableClaim.press('Space');
+  assert.equal(await page.locator('.graph-node.evidence').count(), 1);
   assert.equal(pageErrors.length, 0, pageErrors.join("\n"));
   await page.screenshot({ path: screenshotPath, fullPage: true });
   process.stdout.write(`${screenshotPath}\n`);

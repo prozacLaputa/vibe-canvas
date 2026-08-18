@@ -7,6 +7,12 @@ import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import {
+  createConceptGraph,
+  projectConceptGraph,
+  reduceConceptGraph,
+} from "./concept-graph.js";
+
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const UI_URI = "ui://vibe-canvas/main.html";
 const UI_PATH = path.join(pluginRoot, "ui", "vibe-canvas.html");
@@ -78,6 +84,11 @@ const tools = [
         userText: { type: "string", minLength: 1 },
         assistantTakeaway: { type: "string" },
         summary: { type: "string" },
+        overview: {
+          type: "string",
+          maxLength: 240,
+          description: "A concise cumulative overview of the current Picked concept state, not a per-turn log.",
+        },
         aiPick: {
           type: "string",
           enum: ["picked", "candidate", "ignored"],
@@ -98,12 +109,79 @@ const tools = [
         },
         themes: {
           type: "array",
+          description: "Current-turn contributions only. Reuse the canonical id and title from vibe_canvas_get_projection for semantically matching themes. Create at most one new top-level theme per turn.",
           items: {
             type: "object",
             required: ["title", "points"],
             properties: {
-              title: { type: "string", minLength: 1 },
+              id: {
+                type: "string",
+                description: "Canonical theme identity returned by vibe_canvas_get_projection. Omit only for a genuinely new theme.",
+              },
+              title: {
+                type: "string",
+                minLength: 1,
+                description: "Reuse the existing canonical title when id refers to an existing theme.",
+              },
               points: { type: "array", items: { type: "string" } },
+            },
+            additionalProperties: false,
+          },
+        },
+        conceptOperations: {
+          type: "array",
+          description: "Optional typed concept-graph patch for canonical domains, topics, atomic claims, and cross-topic relations. Reuse stable ids from the previous conceptGraph projection. Use merge operations for semantic duplicates and move_claim when splitting an overloaded topic.",
+          items: {
+            type: "object",
+            required: ["op"],
+            properties: {
+              op: {
+                type: "string",
+                enum: [
+                  "upsert_domain",
+                  "upsert_topic",
+                  "upsert_claim",
+                  "link",
+                  "merge_topics",
+                  "merge_claims",
+                  "move_claim",
+                ],
+              },
+              id: { type: "string" },
+              title: { type: "string" },
+              question: { type: "string" },
+              domainId: { type: "string" },
+              text: { type: "string" },
+              sourceQuote: {
+                type: "string",
+                description: "Shortest exact substring of the current userText that supports this claim. Never paraphrase it.",
+              },
+              type: {
+                type: "string",
+                enum: [
+                  "fact",
+                  "judgment",
+                  "cause",
+                  "decision",
+                  "question",
+                  "action",
+                  "meta",
+                  "insight",
+                  "causes",
+                  "supports",
+                  "contradicts",
+                  "depends_on",
+                  "example_of",
+                  "related_to",
+                ],
+              },
+              primaryTopicId: { type: "string" },
+              relatedTopicIds: { type: "array", items: { type: "string" } },
+              fromId: { type: "string" },
+              toId: { type: "string" },
+              sourceId: { type: "string" },
+              targetId: { type: "string" },
+              claimId: { type: "string" },
             },
             additionalProperties: false,
           },
@@ -303,6 +381,7 @@ function migrateSession(session) {
   session.turns ??= [];
   session.blocks ??= [];
   session.themes ??= [];
+  session.conceptGraph ??= createConceptGraph();
   session.theme = normalizeTheme(session.theme);
   for (const turn of session.turns) {
     turn.aiPick ??= turn.picked === false ? "ignored" : "picked";
@@ -316,8 +395,35 @@ function migrateSession(session) {
   for (const turn of session.turns) {
     turn.themes ??= [];
     turn.summary ??= turn.assistantTakeaway || "";
+    turn.overview ??= "";
+    turn.conceptOperations ??= [];
   }
+  rebuildConceptGraph(session);
   return session;
+}
+
+function rebuildConceptGraph(session) {
+  let graph = createConceptGraph();
+  for (const turn of session.turns.filter(isTurnPicked)) {
+    if (!turn.conceptOperations?.length) continue;
+    graph = reduceConceptGraph(graph, turn.conceptOperations, {
+      turnId: turn.id,
+      userText: turn.userText ?? "",
+    });
+  }
+  session.conceptGraph = graph;
+  return graph;
+}
+
+function conceptThemes(conceptGraph) {
+  const projection = projectConceptGraph(conceptGraph);
+  return projection.domains.flatMap((domain) =>
+    domain.topics.map((topic) => ({
+      id: topic.id,
+      title: topic.title,
+      points: topic.claims.map((claim) => ({ id: claim.id, text: claim.text })),
+    })),
+  );
 }
 
 function projectPickedTurns(session) {
@@ -325,17 +431,19 @@ function projectPickedTurns(session) {
   const themeMap = new Map();
   for (const turn of pickedTurns) {
     for (const theme of turn.themes ?? []) {
-      const key = theme.title.trim().toLocaleLowerCase();
+      const title = theme.title.trim();
+      const themeId = theme.id || stableId("theme", title.toLocaleLowerCase());
+      const key = `id:${themeId}`;
       let merged = themeMap.get(key);
       if (!merged) {
-        merged = { id: stableId("theme", key), title: theme.title.trim(), points: [], pointTexts: new Set() };
+        merged = { id: themeId, title, points: [], pointTexts: new Set() };
         themeMap.set(key, merged);
       }
       for (const point of theme.points ?? []) {
         const text = typeof point === "string" ? point.trim() : point.text?.trim();
         if (!text || merged.pointTexts.has(text)) continue;
         merged.pointTexts.add(text);
-        merged.points.push({ id: stableId("point", `${key}\u0000${text}`), text });
+        merged.points.push({ id: stableId("point", `${themeId}\u0000${text}`), text });
       }
     }
   }
@@ -343,10 +451,15 @@ function projectPickedTurns(session) {
     .map((turn) => turn.summary || turn.assistantTakeaway || "")
     .map((summary) => summary.trim())
     .filter(Boolean);
+  const latestOverview = pickedTurns.at(-1)?.overview?.trim() ?? "";
+  const fallbackSummary = [...new Set(summaries)].slice(-3).join(" ");
+  const typedThemes = conceptThemes(session.conceptGraph ?? createConceptGraph());
   return {
     pickedTurnCount: pickedTurns.length,
-    summary: summaries.join(" "),
-    themes: [...themeMap.values()].map(({ pointTexts, ...theme }) => theme),
+    summary: (latestOverview || fallbackSummary).slice(0, 240),
+    themes: typedThemes.length
+      ? typedThemes
+      : [...themeMap.values()].map(({ pointTexts, ...theme }) => theme),
   };
 }
 
@@ -400,6 +513,7 @@ async function openCanvas(args = {}) {
     turns: [],
     summary: "",
     themes: [],
+    conceptGraph: createConceptGraph(),
   };
   sessions.set(session.id, session);
   sessionLocations.set(session.id, dataDir);
@@ -413,6 +527,13 @@ async function openCanvas(args = {}) {
 
 function serializeState(session) {
   const projection = projectPickedTurns(session);
+  const browserConceptGraph = projectConceptGraph(session.conceptGraph, {
+    includeEvidenceQuotes: true,
+    maxEvidenceQuotes: 5,
+  });
+  const claimsById = new Map(
+    browserConceptGraph.claimIndex.map((claim) => [claim.id, claim]),
+  );
   const turns = session.turns.map((turn) => ({
     ...turn,
     aiPick: normalizeAiPick(turn.aiPick),
@@ -426,15 +547,23 @@ function serializeState(session) {
   const rootId = `root:${session.id}`;
   const themeNodes = projection.themes.flatMap((theme) => [
     { id: `theme:${theme.id}`, kind: "theme", label: theme.title, parentId: rootId },
-    ...theme.points.map((point) => ({
-      id: `point:${point.id}`,
-      kind: "point",
-      label: point.text,
-      parentId: `theme:${theme.id}`,
-    })),
+    ...theme.points.map((point) => {
+      const claim = claimsById.get(point.id);
+      return {
+        id: `point:${point.id}`,
+        claimId: point.id,
+        kind: "point",
+        label: point.text,
+        parentId: `theme:${theme.id}`,
+        evidenceCount: claim?.evidenceCount ?? 0,
+        evidenceQuotes: claim?.evidenceQuotes ?? [],
+        hiddenEvidenceQuoteCount: claim?.hiddenEvidenceQuoteCount ?? 0,
+      };
+    }),
   ]);
   return {
     ...session,
+    conceptGraph: browserConceptGraph,
     turns,
     ...projection,
     candidates,
@@ -449,13 +578,14 @@ function serializeState(session) {
 
 async function syncTurn(args = {}) {
   const session = await loadSession(args.sessionId, args.workspaceRoot);
+  const draft = structuredClone(session);
   const userText = typeof args.userText === "string" ? args.userText : "";
   if (!userText.trim()) throw new Error("User text cannot be empty.");
   if (!Array.isArray(args.themes)) throw new Error("Themes must be an array.");
-  applyCandidateUpdates(session, args.candidateUpdates);
+  applyCandidateUpdates(draft, args.candidateUpdates);
   const now = new Date().toISOString();
-  session.turns ??= [];
-  session.turns.push({
+  draft.turns ??= [];
+  draft.turns.push({
     id: crypto.randomUUID(),
     userText,
     aiPick: normalizeAiPick(args.aiPick),
@@ -463,28 +593,37 @@ async function syncTurn(args = {}) {
     assistantTakeaway:
       typeof args.assistantTakeaway === "string" ? args.assistantTakeaway.trim() : "",
     summary: typeof args.summary === "string" ? args.summary.trim() : "",
+    overview: typeof args.overview === "string" ? args.overview.trim().slice(0, 240) : "",
     themes: normalizeThemes(args.themes),
+    conceptOperations: Array.isArray(args.conceptOperations)
+      ? structuredClone(args.conceptOperations)
+      : [],
     createdAt: now,
   });
-  applyProjection(session);
-  session.revision += 1;
-  session.updatedAt = now;
-  await persistSession(session);
-  return { sessionId: session.id, revision: session.revision, updatedAt: session.updatedAt };
+  rebuildConceptGraph(draft);
+  applyProjection(draft);
+  draft.revision += 1;
+  draft.updatedAt = now;
+  await persistSession(draft);
+  sessions.set(draft.id, draft);
+  return { sessionId: draft.id, revision: draft.revision, updatedAt: draft.updatedAt };
 }
 
 async function setTurnPicked(sessionId, turnId, picked) {
   if (typeof picked !== "boolean") throw new Error("picked must be a boolean.");
   const session = await loadSession(sessionId);
-  const turn = session.turns.find((candidate) => candidate.id === turnId);
+  const draft = structuredClone(session);
+  const turn = draft.turns.find((candidate) => candidate.id === turnId);
   if (!turn) throw new Error(`Unknown turn: ${turnId}`);
-  if (turn.manualPick === picked) return serializeState(session);
+  if (turn.manualPick === picked) return serializeState(draft);
   turn.manualPick = picked;
-  applyProjection(session);
-  session.revision += 1;
-  session.updatedAt = new Date().toISOString();
-  await persistSession(session);
-  return serializeState(session);
+  rebuildConceptGraph(draft);
+  applyProjection(draft);
+  draft.revision += 1;
+  draft.updatedAt = new Date().toISOString();
+  await persistSession(draft);
+  sessions.set(draft.id, draft);
+  return serializeState(draft);
 }
 
 async function setCanvasTheme(sessionId, theme) {
@@ -519,9 +658,11 @@ async function getProjection(args = {}) {
     summary: projection.summary,
     candidates,
     themes: projection.themes.map((theme) => ({
+      id: theme.id,
       title: theme.title,
       points: theme.points.map((point) => point.text),
     })),
+    conceptGraph: projectConceptGraph(session.conceptGraph),
   };
 }
 
@@ -531,7 +672,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {}, resources: {} },
-        serverInfo: { name: "vibe-canvas", version: "0.7.0" },
+        serverInfo: { name: "vibe-canvas", version: "0.9.0" },
       };
     case "tools/list":
       return { tools };

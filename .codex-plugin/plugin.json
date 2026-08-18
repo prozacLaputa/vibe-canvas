@@ -1,6 +1,6 @@
 {
   "name": "vibe-canvas",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "description": "A live right-side projection of the current Codex conversation, with source turns, structured understanding, and a dynamic mind map.",
   "author": {
     "name": "prozacLaputa"
@@ -12,7 +12,7 @@
   "interface": {
     "displayName": "Vibe Canvas",
     "shortDescription": "Project each Codex turn into a live right-side mind map.",
-    "longDescription": "A local-first conversation projection for Codex: keep chatting normally on the left while AI auto-picks useful turns, buffers uncertain candidates, preserves manual Pick authority through clear green/gray round checkboxes, and offers a persistent labeled blue/warm theme switch.",
+    "longDescription": "A local-first conversation projection for Codex: keep chatting normally on the left while AI auto-picks useful turns, merges repeated ideas into a typed concept graph, preserves cross-topic relations and manual Pick provenance, and expands third-level claims into exact fourth-level source evidence on demand.",
     "developerName": "prozacLaputa",
     "category": "Productivity",
     "capabilities": ["Interactive", "MCP", "Local Files"],
